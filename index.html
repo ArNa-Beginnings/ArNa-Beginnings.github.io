@@ -442,7 +442,7 @@
     <div class="card">
       <div class="blessings">
         ॥ Sri Lakshminarasimha Swamy Prasanna ॥<br/>
-        ॥ Sree Kanyaka Parameshwari Devi Krupe ॥<br/>
+        ॥ Sri Kanyaka Parameshwari Devi Krupe ॥<br/>
         ॥ Om Sai Ram ॥
       </div>
 
@@ -635,60 +635,116 @@
 
 <script>
 (function(){
-  var track=document.getElementById('mem-track');
-  var dotsWrap=document.getElementById('mem-dots');
-  var prevBtn=document.getElementById('mem-prev');
-  var nextBtn=document.getElementById('mem-next');
-  var counter=document.getElementById('mem-counter');
-  var AUTO_MS=4000,current=0,timer=null,slides,dots,total;
+  /* ── Memories Carousel ─────────────────────────────────────────
+     Fix: use absolute positioning per slide instead of translateX
+     on a flex track. Each slide is position:absolute, only the
+     active one is visible. This is immune to hidden-slide count
+     drift caused by placeholder onerror handlers.
+  ──────────────────────────────────────────────────────────────── */
+  var wrapper = document.querySelector('.mem-carousel-wrapper');
+  var track   = document.getElementById('mem-track');
+  var dotsWrap= document.getElementById('mem-dots');
+  var prevBtn = document.getElementById('mem-prev');
+  var nextBtn = document.getElementById('mem-next');
+  var counter = document.getElementById('mem-counter');
+  var AUTO_MS = 4000, current = 0, timer = null;
+  var slides, total;
 
-  function rebuildDots(){
-    slides=Array.from(track.querySelectorAll('.mem-slide')).filter(function(s){return s.style.display!=='none';});
-    total=slides.length;
-    dotsWrap.innerHTML='';
-    slides.forEach(function(_,i){
-      var d=document.createElement('span');
-      d.className='mem-dot'+(i===0?' active':'');
-      d.dataset.idx=i;
-      d.addEventListener('click',function(){goTo(i);resetAuto();});
+  function init(){
+    /* Hide all placeholder slides whose src doesn't start with data: */
+    Array.from(track.querySelectorAll('.mem-slide')).forEach(function(s){
+      var img = s.querySelector('img');
+      if(img && img.src.indexOf('data:') !== 0 && img.src.indexOf('blob:') !== 0){
+        s.style.display = 'none';
+      }
+    });
+
+    slides = Array.from(track.querySelectorAll('.mem-slide')).filter(function(s){
+      return s.style.display !== 'none';
+    });
+    total = slides.length;
+
+    /* Switch track to relative positioning; slides stack absolutely */
+    track.style.display    = 'block';
+    track.style.position   = 'relative';
+    track.style.transition = 'none';
+    track.style.transform  = 'none';
+
+    /* Measure wrapper height from first slide, apply to wrapper */
+    slides.forEach(function(s){
+      s.style.position   = 'absolute';
+      s.style.top        = '0';
+      s.style.left       = '0';
+      s.style.width      = '100%';
+      s.style.opacity    = '0';
+      s.style.transition = 'opacity 0.6s ease';
+      s.style.zIndex     = '0';
+      s.style.minWidth   = '';   /* clear old flex min-width */
+    });
+
+    /* Build dots */
+    dotsWrap.innerHTML = '';
+    slides.forEach(function(_, i){
+      var d = document.createElement('span');
+      d.className = 'mem-dot' + (i === 0 ? ' active' : '');
+      d.dataset.idx = i;
+      d.addEventListener('click', function(){ goTo(i); resetAuto(); });
       dotsWrap.appendChild(d);
     });
-    dots=Array.from(dotsWrap.querySelectorAll('.mem-dot'));
+
+    goTo(0);
+    /* Set wrapper height after first slide is shown */
+    setTimeout(function(){
+      var h = slides[0].offsetHeight;
+      wrapper.style.height = h + 'px';
+    }, 50);
   }
 
   function goTo(idx){
-    if(!slides||!slides.length)return;
-    slides[current]&&slides[current].classList.remove('active');
-    dots[current]&&dots[current].classList.remove('active');
-    current=((idx%total)+total)%total;
-    track.style.transform='translateX(-'+(current*100)+'%)';
+    if(!slides || !slides.length) return;
+    var prev = current;
+    current = ((idx % total) + total) % total;
+
+    slides[prev].style.opacity = '0';
+    slides[prev].style.zIndex  = '0';
+    slides[prev].classList.remove('active');
+
+    slides[current].style.opacity = '1';
+    slides[current].style.zIndex  = '1';
     slides[current].classList.add('active');
-    dots[current]&&dots[current].classList.add('active');
-    counter.textContent=(current+1)+' / '+total;
+
+    /* Sync dots */
+    var dots = dotsWrap.querySelectorAll('.mem-dot');
+    if(dots[prev])    dots[prev].classList.remove('active');
+    if(dots[current]) dots[current].classList.add('active');
+
+    counter.textContent = (current + 1) + ' / ' + total;
+
+    /* Adjust wrapper height for portrait vs landscape */
+    wrapper.style.height = slides[current].offsetHeight + 'px';
   }
 
-  function startAuto(){timer=setInterval(function(){goTo(current+1);},AUTO_MS);}
-  function resetAuto(){clearInterval(timer);startAuto();}
+  function startAuto(){ timer = setInterval(function(){ goTo(current + 1); }, AUTO_MS); }
+  function resetAuto(){ clearInterval(timer); startAuto(); }
 
-  window.memRebuild=function(){
-    clearInterval(timer);
-    if(current>=slides.length-1)current=0;
-    rebuildDots();goTo(current);startAuto();
-  };
+  prevBtn.addEventListener('click', function(){ goTo(current - 1); resetAuto(); });
+  nextBtn.addEventListener('click', function(){ goTo(current + 1); resetAuto(); });
 
-  prevBtn.addEventListener('click',function(){goTo(current-1);resetAuto();});
-  nextBtn.addEventListener('click',function(){goTo(current+1);resetAuto();});
-
-  var touchX=0;
-  track.addEventListener('touchstart',function(e){touchX=e.touches[0].clientX;},{passive:true});
-  track.addEventListener('touchend',function(e){
-    var diff=touchX-e.changedTouches[0].clientX;
-    if(Math.abs(diff)>45){goTo(current+(diff>0?1:-1));resetAuto();}
+  var touchX = 0;
+  track.addEventListener('touchstart', function(e){ touchX = e.touches[0].clientX; }, { passive: true });
+  track.addEventListener('touchend', function(e){
+    var diff = touchX - e.changedTouches[0].clientX;
+    if(Math.abs(diff) > 45){ goTo(current + (diff > 0 ? 1 : -1)); resetAuto(); }
   });
-  track.addEventListener('mouseenter',function(){clearInterval(timer);});
-  track.addEventListener('mouseleave',startAuto);
+  track.addEventListener('mouseenter', function(){ clearInterval(timer); });
+  track.addEventListener('mouseleave', startAuto);
 
-  rebuildDots();goTo(0);startAuto();
+  /* Run after DOM is ready */
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ init(); startAuto(); });
+  } else {
+    init(); startAuto();
+  }
 })();
 </script>
 </body>
